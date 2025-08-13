@@ -63,6 +63,7 @@
   when:
     - enable_nfs | bool
     - inventory_hostname in groups['k8s_worker']
+    - inventory_hostname not in groups['nfs_server']
 
 - name: 临时挂载 NFS 目录
   mount:
@@ -74,6 +75,7 @@
   when:
     - enable_nfs | bool
     - inventory_hostname in groups['k8s_worker']
+    - inventory_hostname not in groups['nfs_server']
 
 - name: 写入 fstab 实现 NFS 永久挂载
   mount:
@@ -85,3 +87,4 @@
   when:
     - enable_nfs | bool
     - inventory_hostname in groups['k8s_worker']
+    - inventory_hostname not in groups['nfs_server']
