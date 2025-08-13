@@ -5,23 +5,26 @@ metadata:
 spec:
   hosts:
 {% for host in groups['k8s_master'] %}
-  - {name: master{{ loop.index }}, address: {{ host }}, internalAddress: {{ host }}, user: {{ ansible_user }}, password: "{{ ansible_ssh_pass }}"}
+  - {name: master{{ '%02d' % loop.index }}, address: {{ host }}, internalAddress: {{ host }}, user: {{ ansible_user }}, password: "{{ ansible_ssh_pass }}"}
 {% endfor %}
-{% for host in groups['k8s_worker'] %}
-  - {name: node{{ loop.index }}, address: {{ host }}, internalAddress: {{ host }}, user: {{ ansible_user }}, password: "{{ ansible_ssh_pass }}"}
+{% for host in (groups['k8s_worker'] | difference(groups['k8s_master'])) %}
+  - {name: node{{ '%02d' % loop.index }}, address: {{ host }}, internalAddress: {{ host }}, user: {{ ansible_user }}, password: "{{ ansible_ssh_pass }}"}
 {% endfor %}
   roleGroups:
     etcd:
 {% for host in groups['k8s_master'] %}
-    - master{{ loop.index }}
+    - master{{ '%02d' % loop.index }}
 {% endfor %}
     control-plane:
 {% for host in groups['k8s_master'] %}
-    - master{{ loop.index }}
+    - master{{ '%02d' % loop.index }}
 {% endfor %}
     worker:
-{% for host in groups['k8s_worker'] %}
-    - node{{ loop.index }}
+{% for host in groups['k8s_master'] %}
+    - master{{ '%02d' % loop.index }}
+{% endfor %}
+{% for host in (groups['k8s_worker'] | difference(groups['k8s_master'])) %}
+    - node{{ '%02d' % loop.index }}
 {% endfor %}
     registry:
     - master1

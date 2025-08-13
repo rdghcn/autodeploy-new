@@ -15,6 +15,7 @@ HTTP_PORT=80
 # 节点IP列表
 master_ips=("192.168.100.41")
 worker_ips=("192.168.100.42" "192.168.100.43")
+ceph_ips=("192.168.100.44" "192.168.100.45" "192.168.100.46")
 
 # ansible用户及免密信息
 ANSIBLE_USER="test"
@@ -75,13 +76,37 @@ apt update
 ########################################
 
 mkdir -p /etc/ansible/hosts
+ceph_children=true
+for ip in "${ceph_ips[@]}"; do
+    if [[ ! " ${master_ips[*]} ${worker_ips[*]} " =~ " ${ip} " ]]; then
+        ceph_children=false
+        break
+    fi
+done
 
-cat << EOF > /etc/ansible/hosts/hosts
+cat > /etc/ansible/hosts/hosts <<EOF
 [k8s_master]
-$(for ip in "${master_ips[@]}"; do echo "$ip"; done)
+$(printf "%s\n" "${master_ips[@]}")
 
 [k8s_worker]
-$(for ip in "${worker_ips[@]}"; do echo "$ip"; done)
+$(printf "%s\n" "${master_ips[@]}")
+$(printf "%s\n" "${worker_ips[@]}")
+EOF
+
+if $ceph_children; then
+cat >> /etc/ansible/hosts/hosts <<EOF
+[k8s_ceph:children]
+k8s_master
+k8s_worker
+EOF
+else
+cat >> /etc/ansible/hosts/hosts <<EOF
+[k8s_ceph]
+$(printf "%s\n" "${ceph_ips[@]}")
+EOF
+fi
+
+cat >> /etc/ansible/hosts/hosts <<EOF
 
 [nfs_server]
 ${master_ips[0]}
@@ -113,7 +138,7 @@ k8s_version: v1.28.8
 kubekey_version: v3.1.8
 timezone: Asia/Shanghai
 ntp_server: ${master_ips[0]}
-mysql_node: node1
+mysql_node: node01
 EOF
 
 ########################################
@@ -130,7 +155,41 @@ ansible all -i /etc/ansible/hosts/hosts -m authorized_key \
   -e "ansible_ssh_common_args='-o StrictHostKeyChecking=no'"
 
 ########################################
-# 8. 完成
+# 8. 设置主机名
+########################################
+
+declare -A host_map
+for i in "${!master_ips[@]}"; do
+    hn=$(printf "master%02d" $((i+1)))
+    host_map[${master_ips[$i]}]=$hn
+done
+for i in "${!worker_ips[@]}"; do
+    ip=${worker_ips[$i]}
+    if [[ -z ${host_map[$ip]} ]]; then
+        hn=$(printf "node%02d" $((i+1)))
+        host_map[$ip]=$hn
+    fi
+done
+if ! $ceph_children; then
+    for i in "${!ceph_ips[@]}"; do
+        ip=${ceph_ips[$i]}
+        if [[ -z ${host_map[$ip]} ]]; then
+            hn=$(printf "ceph%02d" $((i+1)))
+            host_map[$ip]=$hn
+        fi
+    done
+fi
+
+for ip in "${!host_map[@]}"; do
+    hn=${host_map[$ip]}
+    ansible "$ip" -i /etc/ansible/hosts/hosts -m shell \
+      -a "hostnamectl set-hostname ${hn}" \
+      -e "ansible_python_interpreter=/usr/bin/python3" \
+      -e "ansible_ssh_common_args='-o StrictHostKeyChecking=no'"
+done
+
+########################################
+# 9. 完成
 ########################################
 
 echo "初始化完成"
