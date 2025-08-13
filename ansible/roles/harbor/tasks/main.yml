@@ -1,0 +1,92 @@
+---
+- name: 创建 Harbor 安装目录
+  file:
+    path: "{{ harbor_data_dir }}"
+    state: directory
+    mode: '0755'
+
+- name: 创建 Harbor 证书目录
+  file:
+    path: "{{ harbor_cert_dir }}"
+    state: directory
+    mode: '0755'
+
+- name: 拷贝 Harbor 安装包到目标主机
+  copy:
+    src: harbor-offline-installer-v2.11.2.tgz
+    dest: "{{ harbor_data_dir }}/"
+  when: inventory_hostname == groups['all'][0]
+
+- name: 拷贝 Harbor 证书包到目标主机
+  copy:
+    src: harbor-cert.tar.gz
+    dest: "{{ harbor_data_dir }}/"
+  when: inventory_hostname == groups['all'][0]
+
+- name: 解压 Harbor 安装包
+  unarchive:
+    src: "{{ harbor_data_dir }}/harbor-offline-installer-v2.11.2.tgz"
+    dest: "{{ harbor_data_dir }}"
+    remote_src: yes
+  when: inventory_hostname == groups['all'][0]
+
+- name: 分发 Harbor 证书包到远程
+  copy:
+    src: harbor-cert.tar.gz
+    dest: "{{ harbor_data_dir }}/harbor-cert.tar.gz"
+    mode: 0644
+
+- name: 解压 Harbor 证书包
+  unarchive:
+    src: "{{ harbor_data_dir }}/harbor-cert.tar.gz"
+    dest: "{{ harbor_cert_dir }}"
+    remote_src: yes
+
+- name: 添加 Harbor 域名解析
+  lineinfile:
+    path: /etc/hosts
+    line: "{{ harbor_ip }} {{ harbor_domain }}"
+    state: present
+
+- name: 执行 Harbor 安装脚本
+  command: ./install.sh
+  args:
+    chdir: "{{ harbor_data_dir }}"
+  when: inventory_hostname == groups['all'][0]
+
+    #- name: 创建 Harbor 项目 kubesphereio
+    #  uri:
+    #    url: "https://{{ harbor_domain }}/api/v2.0/projects"
+    #    method: POST
+    #    user: "{{ harbor_user }}"
+    #    password: "{{ harbor_password }}"
+    #    force_basic_auth: yes
+    #    headers:
+    #      Content-Type: "application/json"
+    #    body: |
+    #      {
+    #        "project_name": "kubesphereio",
+    #        "metadata": {
+    #          "public": "true"
+    #        }
+    #      }
+    #    body_format: json
+    #    status_code: 201,409  # 201: 创建成功，409: 已存在
+    #    validate_certs: no
+    #  when: inventory_hostname == groups['all'][0]
+    #
+    #- name: 登录并加载镜像推送到 Harbor（支持多镜像）
+    #  shell: |
+    #    docker login -u {{ harbor_user }} -p {{ harbor_password }} https://{{ harbor_domain }}
+    #
+    #    for tar in /opt/aicloud-offline-package/images/*.tar; do
+    #      docker load -i "$tar" | awk -F': ' '/Loaded image:/ {print $2}' | while read image; do
+    #        repo=$(echo "$image" | cut -d'/' -f2-)
+    #        docker tag "$image" "{{ harbor_domain }}/$repo"
+    #        docker push "{{ harbor_domain }}/$repo"
+    #      done
+    #    done
+    #  args:
+    #    executable: /bin/bash
+    #  when: inventory_hostname == groups['all'][0]
+    #

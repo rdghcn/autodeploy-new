@@ -1,0 +1,43 @@
+- name: 确保目标目录存在
+  file:
+    path: /opt/aicloud-offline-package
+    state: directory
+    owner: root
+    group: root
+    mode: '0755'
+
+- name: 分发 k8s-core-images-new.tar 到所有节点
+  copy:
+    src: /opt/aicloud-offline-package/k8s/k8s-core-images-new.tar
+    dest: /opt/aicloud-offline-package/k8s-core-images-new.tar
+    remote_src: no
+
+- name: 使用 ctr 导入离线镜像
+  shell: |
+    ctr -n k8s.io images import /opt/aicloud-offline-package/k8s-core-images-new.tar
+
+- name: 渲染 kk config.yaml（配置镜像地址为 containerd 可用）
+  template:
+    src: config.yaml.j2
+    dest: /opt/aicloud-offline-package/k8s/config.yaml
+  when: inventory_hostname in groups['nfs_server']
+
+- name: 禁用 needrestart 交互提示
+  copy:
+    dest: /etc/needrestart/conf.d/99no-prompt.conf
+    content: |
+      $nrconf{restart} = 'a';
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: 清空 nftables 规则，防止与 Kubernetes 冲突
+  command: nft flush ruleset
+
+- name: 执行 kk create cluster（使用本地 ctr 镜像，无需 Harbor，也不传 packages）
+  shell: |
+    cd /opt/aicloud-offline-package/k8s/
+    export KKZONE=cn
+    ./kk create cluster -f config.yaml -a /opt/aicloud-offline-package/k8s/k8s-v1.28.8-ubuntu-2204.tar.gz --skip-pull-images --yes
+  when: inventory_hostname in groups['nfs_server']
+

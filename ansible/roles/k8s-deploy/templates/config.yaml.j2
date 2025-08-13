@@ -1,0 +1,46 @@
+apiVersion: kubekey.kubesphere.io/v1beta3
+kind: Cluster
+metadata:
+  name: sample
+spec:
+  hosts:
+{% for host in groups['k8s_master'] %}
+  - {name: master{{ loop.index }}, address: {{ host }}, internalAddress: {{ host }}, user: {{ ansible_user }}, password: "{{ ansible_ssh_pass }}"}
+{% endfor %}
+{% for host in groups['k8s_worker'] %}
+  - {name: node{{ loop.index }}, address: {{ host }}, internalAddress: {{ host }}, user: {{ ansible_user }}, password: "{{ ansible_ssh_pass }}"}
+{% endfor %}
+  roleGroups:
+    etcd:
+{% for host in groups['k8s_master'] %}
+    - master{{ loop.index }}
+{% endfor %}
+    control-plane:
+{% for host in groups['k8s_master'] %}
+    - master{{ loop.index }}
+{% endfor %}
+    worker:
+{% for host in groups['k8s_worker'] %}
+    - node{{ loop.index }}
+{% endfor %}
+    registry:
+    - master1
+  controlPlaneEndpoint:
+    domain: lb.infrawaves.com
+    address: "{{ groups['k8s_master'][0] }}"
+    port: 6443
+  kubernetes:
+    version: {{ k8s_version }}
+    clusterName: cluster.local
+    containerManager: containerd
+    DNSDomain: cluster.local
+    autoRenewCerts: true
+  etcd:
+    type: kubekey
+  network:
+    plugin: calico
+    kubePodsCIDR: 10.233.64.0/18
+    kubeServiceCIDR: 10.233.0.0/18
+    multusCNI:
+      enabled: false
+

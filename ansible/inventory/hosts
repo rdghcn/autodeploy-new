@@ -1,0 +1,13 @@
+
+[k8s_master]
+10.168.0.201
+
+[k8s_worker]
+10.168.0.202
+10.168.0.203
+
+[nfs_server]
+10.168.0.201
+
+[all:vars]
+ansible_ssh_user=root

@@ -1,0 +1,17 @@
+{% if inventory_hostname == nfs_server_ip %}
+# Master 节点 (NTP Server)
+local stratum 10
+allow all
+{% else %}
+# Worker 节点 (NTP Client)
+server {{ ntp_server }} iburst
+{% endif %}
+
+driftfile /var/lib/chrony/chrony.drift
+makestep 3 3
+
+logdir /var/log/chrony
+log measurements statistics tracking
+
+rtcsync
+

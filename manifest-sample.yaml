@@ -1,0 +1,52 @@
+
+apiVersion: kubekey.kubesphere.io/v1alpha2
+kind: Manifest
+metadata:
+  name: sample
+spec:
+  arches:
+  - amd64
+  operatingSystems:
+  - arch: amd64
+    type: linux
+    id: ubuntu
+    version: "22.04"
+    osImage: Ubuntu 22.04.5 LTS
+    repository:
+      iso:
+        localPath: "/home/test/ubuntu-22.04-debs-amd64.iso"
+        url:
+  kubernetesDistributions:
+  - type: kubernetes
+    version: v1.28.8
+  components:
+    helm: 
+      version: v3.14.3
+    cni: 
+      version: v1.2.0
+    etcd: 
+      version: v3.5.13
+    containerRuntimes:
+    - type: docker
+      version: 24.0.9
+    - type: containerd
+      version: 1.7.13
+    calicoctl:
+      version: v3.27.4
+    crictl: 
+      version: v1.29.0
+    
+  images:
+  - registry.cn-beijing.aliyuncs.com/kubesphereio/pause:3.9
+  - registry.cn-beijing.aliyuncs.com/kubesphereio/kube-apiserver:v1.28.8
+  - registry.cn-beijing.aliyuncs.com/kubesphereio/kube-controller-manager:v1.28.8
+  - registry.cn-beijing.aliyuncs.com/kubesphereio/kube-scheduler:v1.28.8
+  - registry.cn-beijing.aliyuncs.com/kubesphereio/kube-proxy:v1.28.8
+  - registry.cn-beijing.aliyuncs.com/kubesphereio/coredns:1.9.3
+  - registry.cn-beijing.aliyuncs.com/kubesphereio/k8s-dns-node-cache:1.22.20
+  - registry.cn-beijing.aliyuncs.com/kubesphereio/kube-controllers:v3.27.4
+  - registry.cn-beijing.aliyuncs.com/kubesphereio/cni:v3.27.4
+  - registry.cn-beijing.aliyuncs.com/kubesphereio/node:v3.27.4
+  registry:
+    auths: {}
+

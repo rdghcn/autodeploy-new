@@ -1,0 +1,12 @@
+
+offline_package_path: /data/offline
+nfs_server_ip: 10.168.0.201
+harbor_domain: harbor.local.clusters
+harbor_ip: 10.168.0.201
+harbor_user: admin
+harbor_password: Harbor12345
+k8s_version: v1.28.8
+kubekey_version: v3.1.8
+timezone: Asia/Shanghai
+ntp_server: 10.168.0.201
+mysql_node: node1

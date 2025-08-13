@@ -1,0 +1,43 @@
+
+- name: 上传镜像与推送到Harbor
+  shell: |
+    cd /data/offline/4-images-push
+    bash load_push_images.sh
+  when: inventory_hostname == harbor_ip
+
+- name: 安装Helm
+  shell: |
+    cd /data/offline/5-aicloud
+    tar -zxvf helm-v3.16.0-linux-amd64.tar.gz
+    cp linux-amd64/helm /usr/bin/
+
+- name: 部署NFS SC存储
+  shell: kubectl apply -f /data/offline/5-aicloud/nfs-client-provisioner.yaml
+
+- name: 部署监控组件
+  shell: |
+    kubectl create ns monitoring
+    kubectl apply -f /data/offline/5-aicloud/node-export.yaml
+    kubectl apply -f /data/offline/5-aicloud/metric-server.yaml
+    kubectl apply -f /data/offline/5-aicloud/kube-state-metrics.yaml
+
+- name: 打标签
+  shell: kubectl label nodes {{ inventory_hostname }} cpu_node=true
+  ignore_errors: yes
+
+- name: 安装Volcano Helm Chart
+  shell: |
+    cd /data/offline/5-aicloud
+    tar -zxvf volcano-aicloud-0.0.1.tgz
+    helm install volcano ./volcano-aicloud --namespace volcano-system --create-namespace
+
+- name: 安装Venus Helm Chart
+  shell: |
+    cd /data/offline/5-aicloud
+    tar -zxvf venus-aicloud-0.0.1.tgz
+    helm install venus ./venus-aicloud --namespace venus --create-namespace
+
+- name: Patch mysql运行节点
+  shell: |
+    kubectl patch sts -n venus venus-mysql --type='json' -p='[{"op": "replace", "path": "/spec/template/spec/nodeSelector/kubernetes.io~1hostname", "value": "{{ mysql_node }}"}]'
+  ignore_errors: yes

@@ -1,0 +1,74 @@
+---
+- name: 安装 Docker 二进制程序到 /usr/bin
+  copy:
+    src: "{{ item }}"
+    dest: "/usr/bin/{{ item }}"
+    mode: '0755'
+    owner: root
+    group: root
+  loop:
+    - containerd
+    - containerd-shim-runc-v2
+    - ctr
+    - docker
+    - dockerd
+    - docker-init
+    - docker-proxy
+    - runc
+    - docker-compose
+
+- name: 安装 docker.service 到 systemd
+  copy:
+    dest: /usr/lib/systemd/system/docker.service
+    content: |
+      [Unit]
+      Description=Docker Application Container Engine
+      Documentation=https://docs.docker.com
+      After=network-online.target firewalld.service
+      Wants=network-online.target
+
+      [Service]
+      Type=notify
+      ExecStart=/usr/bin/dockerd
+      ExecReload=/bin/kill -s HUP $MAINPID
+      LimitNOFILE=infinity
+      LimitNPROC=infinity
+      LimitCORE=infinity
+      TimeoutStartSec=0
+      Delegate=yes
+      KillMode=process
+      Restart=on-failure
+      StartLimitBurst=3
+      StartLimitInterval=60s
+
+      [Install]
+      WantedBy=multi-user.target
+    mode: '0644'
+    owner: root
+    group: root
+
+- name: 创建 /etc/docker 目录（如不存在）
+  file:
+    path: /etc/docker
+    state: directory
+    mode: '0755'
+    owner: root
+    group: root
+
+- name: 配置 Docker daemon.json，允许 Harbor 非安全仓库
+  copy:
+    dest: /etc/docker/daemon.json
+    content: |
+      {
+        "insecure-registries": ["https://harbor.local.clusters"]
+      }
+    mode: '0644'
+    owner: root
+    group: root
+
+- name: 启动并启用 Docker 服务
+  systemd:
+    name: docker
+    state: started
+    enabled: yes
+    daemon_reload: true

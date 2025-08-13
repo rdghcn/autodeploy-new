@@ -1,0 +1,47 @@
+- name: 执行基础环境配置
+  hosts: all
+  become: yes
+  roles:
+    - base-deploy
+  tags:
+    - base
+
+- name: 部署 NFS
+  hosts: all
+  become: yes
+  roles:
+    - nfs
+  tags:
+    - nfs
+
+- name: 安装 Docker
+  hosts: all
+  become: yes
+  roles:
+    - docker
+  tags:
+    - docker
+
+- name: 安装 Harbor
+  hosts: all
+  become: yes
+  roles:
+  - harbor
+  tags:
+  - harbor
+
+- name: 配置containerd
+  hosts: all 
+  become: yes
+  roles:
+    - containerd
+  tags:
+    - containerd
+
+- name: 配置k8s
+  hosts: all 
+  become: yes
+  roles:
+    - k8s-deploy
+  tags:
+    - k8s

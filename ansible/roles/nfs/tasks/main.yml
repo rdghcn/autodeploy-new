@@ -1,0 +1,87 @@
+- name: 创建 NFS 服务端共享目录
+  file:
+    path: "{{ item }}"
+    state: directory
+    mode: '0777'
+  loop:
+    - /mnt/nfs
+    - /mnt/data
+  when:
+    - enable_nfs | bool
+    - inventory_hostname in groups['nfs_server']
+
+- name: 配置 NFS exports 文件
+  lineinfile:
+    path: /etc/exports
+    line: "{{ item }}"
+    state: present
+  loop:
+    - "/mnt/nfs *(rw,sync,no_root_squash,no_subtree_check)"
+    - "/mnt/data *(rw,sync,no_root_squash,no_subtree_check)"
+  when:
+    - enable_nfs | bool
+    - inventory_hostname in groups['nfs_server']
+
+- name: 配置 NFS idmapd.conf，确保 Domain 正确
+  copy:
+    content: |
+      [General]
+      Verbosity = 0
+      Domain = localdomain
+
+      [Mapping]
+      Nobody-User = nobody
+      Nobody-Group = nogroup
+    dest: /etc/idmapd.conf
+    owner: root
+    group: root
+    mode: '0644'
+  when:
+    - enable_nfs | bool
+    - inventory_hostname in groups['nfs_server']
+
+- name: 启动并启用 NFS 服务
+  systemd:
+    name: nfs-server
+    state: started
+    enabled: yes
+  when:
+    - enable_nfs | bool
+    - inventory_hostname in groups['nfs_server']
+
+- name: 重新加载 NFS 导出配置
+  command: exportfs -r
+  when:
+    - enable_nfs | bool
+    - inventory_hostname in groups['nfs_server']
+
+- name: 创建 NFS 客户端挂载目录
+  file:
+    path: "{{ nfs_mount_path }}"
+    state: directory
+    mode: '0755'
+  when:
+    - enable_nfs | bool
+    - inventory_hostname in groups['k8s_worker']
+
+- name: 临时挂载 NFS 目录
+  mount:
+    path: "{{ nfs_mount_path }}"
+    src: "{{ nfs_server_ip }}:/mnt/nfs"
+    fstype: nfs
+    opts: defaults
+    state: mounted
+  when:
+    - enable_nfs | bool
+    - inventory_hostname in groups['k8s_worker']
+
+- name: 写入 fstab 实现 NFS 永久挂载
+  mount:
+    path: "{{ nfs_mount_path }}"
+    src: "{{ nfs_server_ip }}:/mnt/nfs"
+    fstype: nfs
+    opts: defaults
+    state: present
+  when:
+    - enable_nfs | bool
+    - inventory_hostname in groups['k8s_worker']

@@ -1,0 +1,62 @@
+- name: 分发离线 apt 源配置
+  copy:
+    content: |
+      deb [trusted=yes] http://{{ nfs_server_ip }}/ ./
+    dest: /etc/apt/sources.list.d/local-offline.list
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: 检查是否存在 sources.list
+  stat:
+    path: /etc/apt/sources.list
+  register: sources_list_status
+
+- name: 备份原始 sources.list（如果存在）
+  command: mv /etc/apt/sources.list /etc/apt/sources.list.bak
+  when: sources_list_status.stat.exists
+
+- name: 更新 apt 缓存（使用离线源）
+  apt:
+    update_cache: yes
+
+- name: 安装公共基础包
+  apt:
+    name:
+      - ansible
+      - sshpass
+      - ca-certificates
+      - chrony
+      - socat
+      - conntrack
+      - nfs-common
+      - nfs-kernel-server
+      - containerd
+      - python3-docker  
+    state: present
+
+- name: 设置时区
+  timezone:
+    name: "{{ timezone }}"
+
+- name: 配置 chrony.conf 模板
+  template:
+    src: chrony.conf.j2
+    dest: /etc/chrony/chrony.conf
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: 检查是否存在 sources.list.bak
+  stat:
+    path: /etc/apt/sources.list.bak
+  register: sources_backup_status
+
+- name: 恢复原始 sources.list（如果存在备份）
+  command: mv /etc/apt/sources.list.bak /etc/apt/sources.list
+  when: sources_backup_status.stat.exists
+
+- name: 移除离线 apt 源文件
+  file:
+    path: /etc/apt/sources.list.d/local-offline.list
+    state: absent
