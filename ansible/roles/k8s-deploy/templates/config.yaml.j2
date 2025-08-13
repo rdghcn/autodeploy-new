@@ -27,7 +27,7 @@ spec:
     - node{{ '%02d' % loop.index }}
 {% endfor %}
     registry:
-    - master1
+    - master01
   controlPlaneEndpoint:
     domain: lb.infrawaves.com
     address: "{{ groups['k8s_master'][0] }}"
