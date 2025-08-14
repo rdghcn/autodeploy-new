@@ -2618,6 +2618,7 @@ def infer_image(func: FuncT) -> FuncT:
             ctx.image = infer_local_ceph_image(ctx, ctx.container_engine.path)
         if not ctx.image:
             ctx.image = _get_default_image(ctx)
+        ctx.image = resolve_image_tag(ctx, ctx.image)
         return func(ctx)
 
     return cast(FuncT, _infer_image)
@@ -2802,11 +2803,31 @@ def infer_local_ceph_image(ctx: CephadmContext, container_path: str) -> Optional
             if container_info is not None and image_id not in container_info.image_id:
                 continue
             if digest and not digest.endswith('@'):
-                logger.info(f"Using ceph image with id '{image_id}' and tag '{tag}' created on {created_date}\n{digest}")
-                return digest
+                repository = digest.split('@')[0]
+                image_ref = f"{repository}:{tag}"
+                logger.info(
+                    f"Using ceph image with id '{image_id}' and tag '{tag}' created on {created_date}\n{image_ref}"
+                )
+                return image_ref
     if container_info is not None:
         logger.warning(f"Not using image '{container_info.image_id}' as it's not in list of non-dangling images with ceph=True label")
     return None
+
+
+def resolve_image_tag(ctx: CephadmContext, image: str) -> str:
+    """Convert an image digest to its corresponding repository:tag if possible."""
+    if '@sha256:' not in image:
+        return image
+    out, _, ret = call(
+        ctx,
+        [ctx.container_engine.path, 'inspect', '--format', '{{index .RepoTags 0}}', image],
+        verbosity=CallVerbosity.QUIET_UNLESS_ERROR,
+    )
+    if not ret:
+        tag = out.strip()
+        if tag:
+            return tag
+    return image
 
 
 def write_tmp(s, uid, gid):
