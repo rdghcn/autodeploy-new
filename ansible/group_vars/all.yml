@@ -10,3 +10,12 @@ kubekey_version: v3.1.8
 timezone: Asia/Shanghai
 ntp_server: 10.168.0.201
 mysql_node: node1
+enable_cephadm: false
+enable_rook_ceph: false
+ceph_image_tar: "{{ offline_package_path }}/rook-offline/ceph_images.tar"
+ceph_image: harbor.local.clusters/ceph/ceph:v18.2.7
+ceph_mon_ip: 192.168.100.91
+rook_offline_dir: "{{ offline_package_path }}/rook-offline"
+rook_rbd_pool: replicapool
+rook_cephfs_name: myfs
+rook_namespace: rook-ceph
