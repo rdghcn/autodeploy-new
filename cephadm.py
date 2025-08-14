@@ -4663,7 +4663,7 @@ class CephContainer:
                  memory_limit: Optional[str] = None,
                  ) -> None:
         self.ctx = ctx
-        self.image = image
+        self.image = self._resolve_image(image)
         self.entrypoint = entrypoint
         self.args = args
         self.volume_mounts = volume_mounts
@@ -4677,6 +4677,36 @@ class CephContainer:
         self.host_network = host_network
         self.memory_request = memory_request
         self.memory_limit = memory_limit
+
+    _digest_to_tag: Dict[str, str] = {}
+
+    def _resolve_image(self, image: str) -> str:
+        """Translate digest references to a repository:tag if possible."""
+        if '@sha256:' not in image:
+            return image
+        mapped = self._digest_to_tag.get(image)
+        if mapped:
+            return mapped
+        ce = self.ctx.container_engine.path
+        out, _, code = call(
+            self.ctx,
+            [ce, 'images', '--format', '{{.Repository}}:{{.Tag}}@{{.Digest}}'],
+            verbosity=CallVerbosity.QUIET,
+        )
+        if code == 0:
+            digest = image.split('@', 1)[1]
+            for line in out.splitlines():
+                repo_tag, _, line_digest = line.partition('@')
+                if line_digest == digest:
+                    self._digest_to_tag[image] = repo_tag
+                    logger.info(
+                        f'Resolving image digest {image} to tag {repo_tag}'
+                    )
+                    return repo_tag
+        logger.warning(
+            f'Unable to resolve image digest {image}; using it as is'
+        )
+        return image
 
     @classmethod
     def for_daemon(cls,
