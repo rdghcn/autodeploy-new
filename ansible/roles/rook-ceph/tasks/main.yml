@@ -1,0 +1,46 @@
+---
+- name: 创建 RBD 池
+  command: ceph osd pool create {{ rook_rbd_pool }} 128
+  when: inventory_hostname == groups['all'][0]
+
+- name: 启用 RBD 应用
+  command: ceph osd pool application enable {{ rook_rbd_pool }} rbd
+  when: inventory_hostname == groups['all'][0]
+
+- name: 创建 CephFS
+  command: ceph fs volume create {{ rook_cephfs_name }}
+  when: inventory_hostname == groups['all'][0]
+
+- name: 生成外部集群脚本
+  command: >
+    python3 create-external-cluster-resources.py
+    --rbd-data-pool-name {{ rook_rbd_pool }}
+    --cephfs-filesystem-name {{ rook_cephfs_name }}
+    --namespace {{ rook_namespace }}
+    --format bash > external.sh
+  args:
+    chdir: "{{ rook_offline_dir }}"
+  when: inventory_hostname == groups['all'][0]
+
+- name: 部署 Rook Ceph Operator
+  shell: |
+    clusterNamespace={{ rook_namespace }}
+    operatorNamespace={{ rook_namespace }}
+    cd rook-ceph-cluster
+    helm repo add rook-release https://charts.rook.io/release
+    helm install --create-namespace --namespace $clusterNamespace rook-ceph rook-release/rook-ceph -f values.yaml
+    helm install --create-namespace --namespace $clusterNamespace rook-ceph-cluster \
+      --set operatorNamespace=$operatorNamespace rook-release/rook-ceph-cluster -f values-external.yaml
+  args:
+    chdir: "{{ rook_offline_dir }}"
+    executable: /bin/bash
+  when: inventory_hostname == groups['all'][0]
+
+- name: 导入外部 Ceph 集群
+  shell: |
+    . ./external.sh
+    . ./import-external-cluster.sh
+  args:
+    chdir: "{{ rook_offline_dir }}"
+    executable: /bin/bash
+  when: inventory_hostname == groups['all'][0]

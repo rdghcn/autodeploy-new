@@ -122,7 +122,7 @@ EOF
 
 mkdir -p /etc/infranwaves
 
-cat << EOF > /etc/infranwaves/global.yml
+cat << EOF > /etc/infranwaves/globals.yml
 offline_package_path: ${BASE_DIR}
 nfs_server_ip: ${master_ips[0]}
 enable_nfs: true
@@ -139,6 +139,9 @@ kubekey_version: v3.1.8
 timezone: Asia/Shanghai
 ntp_server: ${master_ips[0]}
 mysql_node: node01
+enable_cephadm: false
+enable_rook_ceph: false
+ceph_mon_ip: ${ceph_ips[0]}
 EOF
 
 ########################################

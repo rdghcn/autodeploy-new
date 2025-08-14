@@ -30,8 +30,17 @@
   tags:
   - harbor
 
+- name: 部署 Ceph 集群
+  hosts: all
+  become: yes
+  roles:
+    - role: cephadm
+      when: enable_cephadm | default(false)
+  tags:
+    - cephadm
+
 - name: 配置containerd
-  hosts: all 
+  hosts: all
   become: yes
   roles:
     - containerd
@@ -39,9 +48,18 @@
     - containerd
 
 - name: 配置k8s
-  hosts: all 
+  hosts: all
   become: yes
   roles:
     - k8s-deploy
   tags:
     - k8s
+
+- name: Rook-Ceph 对接 k8s
+  hosts: all
+  become: yes
+  roles:
+    - role: rook-ceph
+      when: enable_rook_ceph | default(false)
+  tags:
+    - rook-ceph

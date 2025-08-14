@@ -1,0 +1,108 @@
+---
+- name: 安装 cephadm 依赖
+  apt:
+    name:
+      - podman
+      - cephadm
+      - ceph-common
+    state: present
+  when: ansible_os_family == 'Debian'
+
+- name: 加载离线 Ceph 镜像
+  shell: "podman load -i {{ ceph_image_tar }}"
+  args:
+    executable: /bin/bash
+  when: inventory_hostname == groups['all'][0]
+
+- name: 登录 Harbor
+  shell: |
+    docker login -u {{ harbor_user }} -p {{ harbor_password }} {{ harbor_domain }}
+    podman login -u {{ harbor_user }} -p {{ harbor_password }} {{ harbor_domain }}
+  args:
+    executable: /bin/bash
+  when: inventory_hostname == groups['all'][0]
+
+- name: 创建 Harbor 项目 ceph
+  uri:
+    url: "https://{{ harbor_domain }}/api/v2.0/projects"
+    method: POST
+    user: "{{ harbor_user }}"
+    password: "{{ harbor_password }}"
+    force_basic_auth: yes
+    headers:
+      Content-Type: "application/json"
+    body: |
+      {
+        "project_name": "ceph",
+        "metadata": {
+          "public": "true"
+        }
+      }
+    body_format: json
+    status_code: [201, 409]
+    validate_certs: no
+  when: inventory_hostname == groups['all'][0]
+
+- name: 推送 Ceph 镜像到 Harbor
+  shell: |
+    for img in $(podman images --format '{{'{{.Repository}}:{{.Tag}}'}}' | grep -v '<none>'); do
+      echo ">> pushing $img"
+      podman push --tls-verify=false "$img"
+    done
+  args:
+    executable: /bin/bash
+  when: inventory_hostname == groups['all'][0]
+
+- name: 创建 Harbor 证书目录
+  file:
+    path: "/etc/containers/certs.d/{{ harbor_domain }}"
+    state: directory
+    mode: '0755'
+
+- name: 分发 Harbor CA
+  copy:
+    src: "/etc/containerd/certs/ca.crt"
+    dest: "/etc/containers/certs.d/{{ harbor_domain }}/ca.crt"
+    remote_src: yes
+
+- name: 分发 Harbor 客户端证书
+  copy:
+    src: "/etc/containerd/certs/{{ harbor_domain }}.crt"
+    dest: "/etc/containers/certs.d/{{ harbor_domain }}/client.cert"
+    remote_src: yes
+
+- name: 分发 Harbor 客户端私钥
+  copy:
+    src: "/etc/containerd/certs/{{ harbor_domain }}.key"
+    dest: "/etc/containers/certs.d/{{ harbor_domain }}/client.key"
+    remote_src: yes
+
+- name: 引导 Ceph 集群
+  command: >
+    cephadm --image {{ ceph_image }} bootstrap
+    --mon-ip {{ ceph_mon_ip }}
+    --skip-dashboard --skip-monitoring-stack --skip-pull
+  when: inventory_hostname == groups['all'][0]
+
+- name: 分发 cephadm 公钥
+  command: ssh-copy-id -f -i /etc/ceph/ceph.pub root@{{ item }}
+  loop: "{{ groups['all'] }}"
+  when: inventory_hostname == groups['all'][0]
+
+- name: 配置 Ceph 镜像源
+  shell: |
+    ceph config set mgr mgr/cephadm/use_repo_digest false
+    ceph config rm global container_image_digest
+    ceph config set global container_image {{ ceph_image }}
+  args:
+    executable: /bin/bash
+  when: inventory_hostname == groups['all'][0]
+
+- name: 添加 Ceph 主机
+  command: ceph orch host add {{ item }} {{ hostvars[item].ansible_host | default(item) }}
+  loop: "{{ groups['all'][1:] }}"
+  when: inventory_hostname == groups['all'][0]
+
+- name: 部署 OSD
+  command: ceph orch apply osd --all-available-devices
+  when: inventory_hostname == groups['all'][0]
