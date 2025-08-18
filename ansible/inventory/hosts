@@ -2,9 +2,16 @@
 [k8s_master]
 10.168.0.201
 
-[k8s_worker]
+[k8s_cpu_worker]
+10.168.0.201
 10.168.0.202
+
+[k8s_gpu_worker]
 10.168.0.203
+
+[k8s_worker:children]
+k8s_cpu_worker
+k8s_gpu_worker
 
 [nfs_server]
 10.168.0.201
