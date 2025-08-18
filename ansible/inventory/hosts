@@ -1,20 +1,20 @@
 
 [k8s_master]
-10.168.0.201
+master01 ansible_host=10.168.0.201 ipmi_ip=192.168.1.201 storage_ip=172.16.0.201
 
 [k8s_cpu_worker]
-10.168.0.201
-10.168.0.202
+master01 ansible_host=10.168.0.201 ipmi_ip=192.168.1.201 storage_ip=172.16.0.201
+node01 ansible_host=10.168.0.202 ipmi_ip=192.168.1.202 storage_ip=172.16.0.202
 
 [k8s_gpu_worker]
-10.168.0.203
+gpu01 ansible_host=10.168.0.203 ipmi_ip=192.168.1.203 storage_ip=172.16.0.203
 
 [k8s_worker:children]
 k8s_cpu_worker
 k8s_gpu_worker
 
 [nfs_server]
-10.168.0.201
+master01
 
 [all:vars]
 ansible_ssh_user=root
