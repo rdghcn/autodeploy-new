@@ -13,9 +13,61 @@ REPO_DIR="${BASE_DIR}/repo"
 HTTP_PORT=80
 
 # 节点IP列表
-master_ips=("192.168.100.41")
-worker_ips=("192.168.100.42" "192.168.100.43")
-ceph_ips=("192.168.100.44" "192.168.100.45" "192.168.100.46")
+# 可通过参数传入，如：
+#   ./init.sh master_ips=192.168.100.41-192.168.100.43 \
+#             cpu_worker_ips=192.168.100.44-192.168.100.50 \
+#             gpu_worker_ips=192.168.100.60-192.168.100.61 \
+#             ceph_ips=192.168.100.70-192.168.100.72
+master_ips=()
+cpu_worker_ips=()
+gpu_worker_ips=()
+ceph_ips=()
+
+expand_ip_range() {
+    local input="$1" part prefix start end
+    for part in $input; do
+        if [[ $part =~ ^([0-9]+\.[0-9]+\.[0-9]+\.)([0-9]+)-([0-9]+)$ ]]; then
+            prefix="${BASH_REMATCH[1]}"
+            start=${BASH_REMATCH[2]}
+            end=${BASH_REMATCH[3]}
+            for i in $(seq $start $end); do
+                printf "%s " "${prefix}${i}"
+            done
+        else
+            printf "%s " "$part"
+        fi
+    done
+}
+
+for arg in "$@"; do
+    case $arg in
+        master_ips=*) master_input=${arg#master_ips=};;
+        cpu_worker_ips=*) cpu_worker_input=${arg#cpu_worker_ips=};;
+        gpu_worker_ips=*) gpu_worker_input=${arg#gpu_worker_ips=};;
+        ceph_ips=*) ceph_input=${arg#ceph_ips=};;
+    esac
+done
+
+if [[ -z $master_input ]]; then
+    read -p "请输入 master IPs (空格或范围): " master_input
+fi
+if [[ -z $cpu_worker_input ]]; then
+    read -p "请输入 CPU worker IPs (空格或范围): " cpu_worker_input
+fi
+if [[ -z $gpu_worker_input ]]; then
+    read -p "请输入 GPU worker IPs (空格或范围): " gpu_worker_input
+fi
+if [[ -z $ceph_input ]]; then
+    read -p "请输入 Ceph IPs (空格或范围): " ceph_input
+fi
+
+read -a master_ips <<< "$(expand_ip_range "$master_input")"
+read -a cpu_worker_ips <<< "$(expand_ip_range "$cpu_worker_input")"
+read -a gpu_worker_ips <<< "$(expand_ip_range "$gpu_worker_input")"
+read -a ceph_ips <<< "$(expand_ip_range "$ceph_input")"
+
+# worker 节点 (CPU + GPU)
+worker_ips=("${cpu_worker_ips[@]}" "${gpu_worker_ips[@]}")
 
 # ansible用户及免密信息
 ANSIBLE_USER="test"
@@ -88,9 +140,16 @@ cat > /etc/ansible/hosts/hosts <<EOF
 [k8s_master]
 $(printf "%s\n" "${master_ips[@]}")
 
-[k8s_worker]
+[k8s_cpu_worker]
 $(printf "%s\n" "${master_ips[@]}")
-$(printf "%s\n" "${worker_ips[@]}")
+$(printf "%s\n" "${cpu_worker_ips[@]}")
+
+[k8s_gpu_worker]
+$(printf "%s\n" "${gpu_worker_ips[@]}")
+
+[k8s_worker:children]
+k8s_cpu_worker
+k8s_gpu_worker
 EOF
 
 if $ceph_children; then
@@ -162,23 +221,21 @@ ansible all -i /etc/ansible/hosts/hosts -m authorized_key \
 ########################################
 
 declare -A host_map
-for i in "${!master_ips[@]}"; do
-    hn=$(printf "master%02d" $((i+1)))
-    host_map[${master_ips[$i]}]=$hn
+idx=1
+for ip in "${master_ips[@]}" "${cpu_worker_ips[@]}"; do
+    host_map[$ip]=$(printf "node%02d" $idx)
+    idx=$((idx+1))
 done
-for i in "${!worker_ips[@]}"; do
-    ip=${worker_ips[$i]}
-    if [[ -z ${host_map[$ip]} ]]; then
-        hn=$(printf "node%02d" $((i+1)))
-        host_map[$ip]=$hn
-    fi
+idx=1
+for ip in "${gpu_worker_ips[@]}"; do
+    host_map[$ip]=$(printf "gpu%02d" $idx)
+    idx=$((idx+1))
 done
 if ! $ceph_children; then
     for i in "${!ceph_ips[@]}"; do
         ip=${ceph_ips[$i]}
         if [[ -z ${host_map[$ip]} ]]; then
-            hn=$(printf "ceph%02d" $((i+1)))
-            host_map[$ip]=$hn
+            host_map[$ip]=$(printf "ceph%02d" $((i+1)))
         fi
     done
 fi
