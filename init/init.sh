@@ -120,13 +120,16 @@ read -p "请输入 master 存储 IPs (空格或范围): " master_storage_input
 read -p "请输入 CPU worker 存储 IPs (空格或范围): " cpu_worker_storage_input
 read -p "请输入 GPU worker 存储 IPs (空格或范围): " gpu_worker_storage_input
 
+
 read -a master_ipmi_ips <<< "$(expand_ip_range "$master_ipmi_input")"
 read -a cpu_worker_ipmi_ips <<< "$(expand_ip_range "$cpu_worker_ipmi_input")"
 read -a gpu_worker_ipmi_ips <<< "$(expand_ip_range "$gpu_worker_ipmi_input")"
 
+
 read -a master_storage_ips <<< "$(expand_ip_range "$master_storage_input")"
 read -a cpu_worker_storage_ips <<< "$(expand_ip_range "$cpu_worker_storage_input")"
 read -a gpu_worker_storage_ips <<< "$(expand_ip_range "$gpu_worker_storage_input")"
+
 
 read -p "请输入带外网关: " OOB_GATEWAY
 read -p "请输入带外掩码: " OOB_NETMASK
@@ -214,6 +217,7 @@ cat > /etc/ansible/hosts/hosts <<EOF
 ${master_entries}
 
 [k8s_cpu_worker]
+
 ${cpu_entries}
 
 [k8s_gpu_worker]
