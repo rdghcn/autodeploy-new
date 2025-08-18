@@ -36,12 +36,26 @@ gpu_worker_hns=()
 ceph_hns=()
 
 expand_ip_range() {
-    local input="$1" part prefix start end
+    local input="$1" part
     for part in $input; do
-        if [[ $part =~ ^([0-9]+\.[0-9]+\.[0-9]+\.)([0-9]+)-([0-9]+)$ ]]; then
-            prefix="${BASH_REMATCH[1]}"
-            start=${BASH_REMATCH[2]}
-            end=${BASH_REMATCH[3]}
+        if [[ $part =~ ^([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)-([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            local start_ip=${BASH_REMATCH[1]}
+            local end_ip=${BASH_REMATCH[2]}
+            local prefix=${start_ip%.*}
+            local start=${start_ip##*.}
+            local end_prefix=${end_ip%.*}
+            local end=${end_ip##*.}
+            if [[ $prefix == $end_prefix ]]; then
+                for i in $(seq $start $end); do
+                    printf "%s " "${prefix}.${i}"
+                done
+            else
+                printf "%s " "$part"
+            fi
+        elif [[ $part =~ ^([0-9]+\.[0-9]+\.[0-9]+\.)([0-9]+)-([0-9]+)$ ]]; then
+            local prefix=${BASH_REMATCH[1]}
+            local start=${BASH_REMATCH[2]}
+            local end=${BASH_REMATCH[3]}
             for i in $(seq $start $end); do
                 printf "%s " "${prefix}${i}"
             done
@@ -60,7 +74,14 @@ generate_entries() {
     hostnames=()
     for i in "${!ips[@]}"; do
         hostnames[i]=$(printf "%s%02d" "$prefix" $((i+1)))
-        echo "${hostnames[i]} ansible_host=${ips[i]} ipmi_ip=${ipmi_ips[i]} storage_ip=${storage_ips[i]}"
+        local line="${hostnames[i]} ansible_host=${ips[i]}"
+        if [[ -n ${ipmi_ips[i]:-} ]]; then
+            line+=" ipmi_ip=${ipmi_ips[i]}"
+        fi
+        if [[ -n ${storage_ips[i]:-} ]]; then
+            line+=" storage_ip=${storage_ips[i]}"
+        fi
+        echo "$line"
     done
 }
 
@@ -94,22 +115,21 @@ read -a ceph_ips <<< "$(expand_ip_range "$ceph_input")"
 read -p "请输入 master 带外 IPs (空格或范围): " master_ipmi_input
 read -p "请输入 CPU worker 带外 IPs (空格或范围): " cpu_worker_ipmi_input
 read -p "请输入 GPU worker 带外 IPs (空格或范围): " gpu_worker_ipmi_input
-read -p "请输入 Ceph 带外 IPs (空格或范围): " ceph_ipmi_input
 
 read -p "请输入 master 存储 IPs (空格或范围): " master_storage_input
 read -p "请输入 CPU worker 存储 IPs (空格或范围): " cpu_worker_storage_input
 read -p "请输入 GPU worker 存储 IPs (空格或范围): " gpu_worker_storage_input
-read -p "请输入 Ceph 存储 IPs (空格或范围): " ceph_storage_input
+
 
 read -a master_ipmi_ips <<< "$(expand_ip_range "$master_ipmi_input")"
 read -a cpu_worker_ipmi_ips <<< "$(expand_ip_range "$cpu_worker_ipmi_input")"
 read -a gpu_worker_ipmi_ips <<< "$(expand_ip_range "$gpu_worker_ipmi_input")"
-read -a ceph_ipmi_ips <<< "$(expand_ip_range "$ceph_ipmi_input")"
+
 
 read -a master_storage_ips <<< "$(expand_ip_range "$master_storage_input")"
 read -a cpu_worker_storage_ips <<< "$(expand_ip_range "$cpu_worker_storage_input")"
 read -a gpu_worker_storage_ips <<< "$(expand_ip_range "$gpu_worker_storage_input")"
-read -a ceph_storage_ips <<< "$(expand_ip_range "$ceph_storage_input")"
+
 
 read -p "请输入带外网关: " OOB_GATEWAY
 read -p "请输入带外掩码: " OOB_NETMASK
@@ -197,7 +217,7 @@ cat > /etc/ansible/hosts/hosts <<EOF
 ${master_entries}
 
 [k8s_cpu_worker]
-${master_entries}
+
 ${cpu_entries}
 
 [k8s_gpu_worker]
