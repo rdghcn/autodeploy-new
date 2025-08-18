@@ -22,6 +22,18 @@ master_ips=()
 cpu_worker_ips=()
 gpu_worker_ips=()
 ceph_ips=()
+master_ipmi_ips=()
+cpu_worker_ipmi_ips=()
+gpu_worker_ipmi_ips=()
+ceph_ipmi_ips=()
+master_storage_ips=()
+cpu_worker_storage_ips=()
+gpu_worker_storage_ips=()
+ceph_storage_ips=()
+master_hns=()
+cpu_worker_hns=()
+gpu_worker_hns=()
+ceph_hns=()
 
 expand_ip_range() {
     local input="$1" part prefix start end
@@ -36,6 +48,19 @@ expand_ip_range() {
         else
             printf "%s " "$part"
         fi
+    done
+}
+
+generate_entries() {
+    local prefix=$1 ips_var=$2 ipmi_var=$3 storage_var=$4 hns_var=$5
+    local -n ips=$ips_var
+    local -n ipmi_ips=$ipmi_var
+    local -n storage_ips=$storage_var
+    local -n hostnames=$hns_var
+    hostnames=()
+    for i in "${!ips[@]}"; do
+        hostnames[i]=$(printf "%s%02d" "$prefix" $((i+1)))
+        echo "${hostnames[i]} ansible_host=${ips[i]} ipmi_ip=${ipmi_ips[i]} storage_ip=${storage_ips[i]}"
     done
 }
 
@@ -65,6 +90,31 @@ read -a master_ips <<< "$(expand_ip_range "$master_input")"
 read -a cpu_worker_ips <<< "$(expand_ip_range "$cpu_worker_input")"
 read -a gpu_worker_ips <<< "$(expand_ip_range "$gpu_worker_input")"
 read -a ceph_ips <<< "$(expand_ip_range "$ceph_input")"
+
+read -p "请输入 master 带外 IPs (空格或范围): " master_ipmi_input
+read -p "请输入 CPU worker 带外 IPs (空格或范围): " cpu_worker_ipmi_input
+read -p "请输入 GPU worker 带外 IPs (空格或范围): " gpu_worker_ipmi_input
+read -p "请输入 Ceph 带外 IPs (空格或范围): " ceph_ipmi_input
+
+read -p "请输入 master 存储 IPs (空格或范围): " master_storage_input
+read -p "请输入 CPU worker 存储 IPs (空格或范围): " cpu_worker_storage_input
+read -p "请输入 GPU worker 存储 IPs (空格或范围): " gpu_worker_storage_input
+read -p "请输入 Ceph 存储 IPs (空格或范围): " ceph_storage_input
+
+read -a master_ipmi_ips <<< "$(expand_ip_range "$master_ipmi_input")"
+read -a cpu_worker_ipmi_ips <<< "$(expand_ip_range "$cpu_worker_ipmi_input")"
+read -a gpu_worker_ipmi_ips <<< "$(expand_ip_range "$gpu_worker_ipmi_input")"
+read -a ceph_ipmi_ips <<< "$(expand_ip_range "$ceph_ipmi_input")"
+
+read -a master_storage_ips <<< "$(expand_ip_range "$master_storage_input")"
+read -a cpu_worker_storage_ips <<< "$(expand_ip_range "$cpu_worker_storage_input")"
+read -a gpu_worker_storage_ips <<< "$(expand_ip_range "$gpu_worker_storage_input")"
+read -a ceph_storage_ips <<< "$(expand_ip_range "$ceph_storage_input")"
+
+read -p "请输入带外网关: " OOB_GATEWAY
+read -p "请输入带外掩码: " OOB_NETMASK
+read -p "请输入存储网关: " STORAGE_GATEWAY
+read -p "请输入存储掩码: " STORAGE_NETMASK
 
 # worker 节点 (CPU + GPU)
 worker_ips=("${cpu_worker_ips[@]}" "${gpu_worker_ips[@]}")
@@ -135,17 +185,23 @@ for ip in "${ceph_ips[@]}"; do
         break
     fi
 done
+master_entries=$(generate_entries master master_ips master_ipmi_ips master_storage_ips master_hns)
+cpu_entries=$(generate_entries node cpu_worker_ips cpu_worker_ipmi_ips cpu_worker_storage_ips cpu_worker_hns)
+gpu_entries=$(generate_entries gpu gpu_worker_ips gpu_worker_ipmi_ips gpu_worker_storage_ips gpu_worker_hns)
+if ! $ceph_children; then
+    ceph_entries=$(generate_entries ceph ceph_ips ceph_ipmi_ips ceph_storage_ips ceph_hns)
+fi
 
 cat > /etc/ansible/hosts/hosts <<EOF
 [k8s_master]
-$(printf "%s\n" "${master_ips[@]}")
+${master_entries}
 
 [k8s_cpu_worker]
-$(printf "%s\n" "${master_ips[@]}")
-$(printf "%s\n" "${cpu_worker_ips[@]}")
+${master_entries}
+${cpu_entries}
 
 [k8s_gpu_worker]
-$(printf "%s\n" "${gpu_worker_ips[@]}")
+${gpu_entries}
 
 [k8s_worker:children]
 k8s_cpu_worker
@@ -161,14 +217,14 @@ EOF
 else
 cat >> /etc/ansible/hosts/hosts <<EOF
 [k8s_ceph]
-$(printf "%s\n" "${ceph_ips[@]}")
+${ceph_entries}
 EOF
 fi
 
 cat >> /etc/ansible/hosts/hosts <<EOF
 
 [nfs_server]
-${master_ips[0]}
+${master_hns[0]}
 
 [all:vars]
 ansible_user=${ANSIBLE_USER}
@@ -201,6 +257,10 @@ mysql_node: node01
 enable_cephadm: false
 enable_rook_ceph: false
 ceph_mon_ip: ${ceph_ips[0]}
+oob_gateway: ${OOB_GATEWAY}
+oob_netmask: ${OOB_NETMASK}
+storage_gateway: ${STORAGE_GATEWAY}
+storage_netmask: ${STORAGE_NETMASK}
 EOF
 
 ########################################
@@ -220,33 +280,32 @@ ansible all -i /etc/ansible/hosts/hosts -m authorized_key \
 # 8. 设置主机名
 ########################################
 
-declare -A host_map
-idx=1
-for ip in "${master_ips[@]}" "${cpu_worker_ips[@]}"; do
-    host_map[$ip]=$(printf "node%02d" $idx)
-    idx=$((idx+1))
-done
-idx=1
-for ip in "${gpu_worker_ips[@]}"; do
-    host_map[$ip]=$(printf "gpu%02d" $idx)
-    idx=$((idx+1))
-done
-if ! $ceph_children; then
-    for i in "${!ceph_ips[@]}"; do
-        ip=${ceph_ips[$i]}
-        if [[ -z ${host_map[$ip]} ]]; then
-            host_map[$ip]=$(printf "ceph%02d" $((i+1)))
-        fi
-    done
-fi
-
-for ip in "${!host_map[@]}"; do
-    hn=${host_map[$ip]}
-    ansible "$ip" -i /etc/ansible/hosts/hosts -m shell \
+for hn in "${master_hns[@]}"; do
+    ansible "$hn" -i /etc/ansible/hosts/hosts -m shell \
       -a "hostnamectl set-hostname ${hn}" \
       -e "ansible_python_interpreter=/usr/bin/python3" \
       -e "ansible_ssh_common_args='-o StrictHostKeyChecking=no'"
 done
+for hn in "${cpu_worker_hns[@]}"; do
+    ansible "$hn" -i /etc/ansible/hosts/hosts -m shell \
+      -a "hostnamectl set-hostname ${hn}" \
+      -e "ansible_python_interpreter=/usr/bin/python3" \
+      -e "ansible_ssh_common_args='-o StrictHostKeyChecking=no'"
+done
+for hn in "${gpu_worker_hns[@]}"; do
+    ansible "$hn" -i /etc/ansible/hosts/hosts -m shell \
+      -a "hostnamectl set-hostname ${hn}" \
+      -e "ansible_python_interpreter=/usr/bin/python3" \
+      -e "ansible_ssh_common_args='-o StrictHostKeyChecking=no'"
+done
+if ! $ceph_children; then
+    for hn in "${ceph_hns[@]}"; do
+        ansible "$hn" -i /etc/ansible/hosts/hosts -m shell \
+          -a "hostnamectl set-hostname ${hn}" \
+          -e "ansible_python_interpreter=/usr/bin/python3" \
+          -e "ansible_ssh_common_args='-o StrictHostKeyChecking=no'"
+    done
+fi
 
 ########################################
 # 9. 完成
