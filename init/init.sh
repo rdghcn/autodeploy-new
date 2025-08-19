@@ -136,8 +136,8 @@ read -a cpu_worker_storage_ips <<< "$(expand_ip_range "$cpu_worker_storage_input
 read -a gpu_worker_storage_ips <<< "$(expand_ip_range "$gpu_worker_storage_input")"
 
 
-read -p "请输入带外网关: " OOB_GATEWAY
-read -p "请输入带外掩码: " OOB_NETMASK
+read -p "请输入带外网关: " IPMI_GATEWAY
+read -p "请输入带外掩码: " IPMI_NETMASK
 read -p "请输入存储网关: " STORAGE_GATEWAY
 read -p "请输入存储掩码: " STORAGE_NETMASK
 
@@ -210,8 +210,57 @@ for ip in "${ceph_ips[@]}"; do
         break
     fi
 done
-generate_entries master master_ips master_ipmi_ips master_storage_ips master_hns master_entries
-generate_entries node cpu_worker_ips cpu_worker_ipmi_ips cpu_worker_storage_ips cpu_worker_hns cpu_entries
+# 合并 master 与 CPU worker 节点并生成唯一主机名
+node_ips=()
+node_ipmi=()
+node_storage=()
+for i in "${!master_ips[@]}"; do
+    node_ips+=("${master_ips[i]}")
+    node_ipmi+=("${master_ipmi_ips[i]:-}")
+    node_storage+=("${master_storage_ips[i]:-}")
+done
+for i in "${!cpu_worker_ips[@]}"; do
+    ip=${cpu_worker_ips[i]}
+    if [[ ! " ${node_ips[*]} " =~ " ${ip} " ]]; then
+        node_ips+=("$ip")
+        node_ipmi+=("${cpu_worker_ipmi_ips[i]:-}")
+        node_storage+=("${cpu_worker_storage_ips[i]:-}")
+    fi
+done
+generate_entries node node_ips node_ipmi node_storage node_hns node_entries
+
+# 构建 IP 映射到主机名及其他属性
+declare -A ip_to_hn ip_to_ipmi ip_to_storage
+for idx in "${!node_ips[@]}"; do
+    ip=${node_ips[idx]}
+    ip_to_hn[$ip]=${node_hns[idx]}
+    if [[ -n ${node_ipmi[idx]} ]]; then ip_to_ipmi[$ip]=${node_ipmi[idx]}; fi
+    if [[ -n ${node_storage[idx]} ]]; then ip_to_storage[$ip]=${node_storage[idx]}; fi
+done
+
+# 根据映射生成 master 与 CPU worker 组条目
+master_entries=()
+master_hns=()
+for ip in "${master_ips[@]}"; do
+    hn=${ip_to_hn[$ip]}
+    master_hns+=("$hn")
+    line="$hn ansible_host=$ip"
+    if [[ -n ${ip_to_ipmi[$ip]:-} ]]; then line+=" ipmi_ip=${ip_to_ipmi[$ip]}"; fi
+    if [[ -n ${ip_to_storage[$ip]:-} ]]; then line+=" storage_ip=${ip_to_storage[$ip]}"; fi
+    master_entries+=("$line")
+done
+cpu_entries=()
+cpu_worker_hns=()
+for ip in "${cpu_worker_ips[@]}"; do
+    hn=${ip_to_hn[$ip]}
+    cpu_worker_hns+=("$hn")
+    line="$hn ansible_host=$ip"
+    if [[ -n ${ip_to_ipmi[$ip]:-} ]]; then line+=" ipmi_ip=${ip_to_ipmi[$ip]}"; fi
+    if [[ -n ${ip_to_storage[$ip]:-} ]]; then line+=" storage_ip=${ip_to_storage[$ip]}"; fi
+    cpu_entries+=("$line")
+done
+
+# GPU 节点保持原有命名
 generate_entries gpu gpu_worker_ips gpu_worker_ipmi_ips gpu_worker_storage_ips gpu_worker_hns gpu_entries
 if ! $ceph_children; then
     generate_entries ceph ceph_ips ceph_ipmi_ips ceph_storage_ips ceph_hns ceph_entries
@@ -258,8 +307,8 @@ ansible_become=true
 ansible_become_method=sudo
 ansible_become_pass=${ANSIBLE_PASS}
 ansible_python_interpreter=/usr/bin/python3
-oob_gateway=${OOB_GATEWAY}
-oob_netmask=${OOB_NETMASK}
+ipmi_gateway=${IPMI_GATEWAY}
+ipmi_netmask=${IPMI_NETMASK}
 storage_gateway=${STORAGE_GATEWAY}
 storage_netmask=${STORAGE_NETMASK}
 EOF
@@ -286,8 +335,8 @@ mysql_node: ${cpu_worker_hns[0]}
 enable_cephadm: false
 enable_rook_ceph: false
 ceph_mon_ip: ${ceph_ips[0]}
-oob_gateway: ${OOB_GATEWAY}
-oob_netmask: ${OOB_NETMASK}
+ipmi_gateway: ${IPMI_GATEWAY}
+ipmi_netmask: ${IPMI_NETMASK}
 storage_gateway: ${STORAGE_GATEWAY}
 storage_netmask: ${STORAGE_NETMASK}
 EOF
