@@ -1,0 +1,10 @@
+- name: Configure bonded network interfaces via netplan
+  template:
+    src: bond-netplan.yaml.j2
+    dest: /etc/netplan/01-bonding.yaml
+    owner: root
+    group: root
+    mode: '0644'
+
+- name: Apply netplan configuration
+  command: netplan apply

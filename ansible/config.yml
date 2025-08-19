@@ -6,6 +6,22 @@
   tags:
     - base
 
+- name: 配置网络 Bond
+  hosts: all
+  become: yes
+  roles:
+    - network
+  tags:
+    - network
+
+- name: 配置 IPMI
+  hosts: all
+  become: yes
+  roles:
+    - ipmi
+  tags:
+    - ipmi
+
 - name: 部署 NFS
   hosts: all
   become: yes

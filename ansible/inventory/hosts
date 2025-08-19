@@ -22,3 +22,5 @@ master01
 
 [all:vars]
 ansible_ssh_user=root
+management_nics=["enp5s0", "enp6s0"]
+storage_nics=["enp7s0", "enp8s0"]
