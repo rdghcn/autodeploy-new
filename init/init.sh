@@ -75,11 +75,10 @@ generate_entries() {
     hostnames=()
     entries=()
     for i in "${!ips[@]}"; do
-        if [[ ${#ips[@]} -gt 1 ]]; then
-            hostnames[i]=$(printf "%s%02d" "$prefix" $((i+1)))
-        else
-            hostnames[i]="$prefix"
-        fi
+
+        local suffix
+        suffix=$(printf "%02d" $((i+1)))
+        hostnames[i]="${prefix}${suffix}"
         local line="${hostnames[i]} ansible_host=${ips[i]}"
         if [[ -n ${ipmi_ips[i]:-} ]]; then
             line+=" ipmi_ip=${ipmi_ips[i]}"
@@ -203,7 +202,7 @@ apt update
 # 6. 生成 Ansible 配置文件
 ########################################
 
-mkdir -p /etc/ansible/hosts
+mkdir -p /etc/ansible
 ceph_children=true
 for ip in "${ceph_ips[@]}"; do
     if [[ ! " ${master_ips[*]} ${worker_ips[*]} " =~ " ${ip} " ]]; then
@@ -218,7 +217,7 @@ if ! $ceph_children; then
     generate_entries ceph ceph_ips ceph_ipmi_ips ceph_storage_ips ceph_hns ceph_entries
 fi
 
-cat > /etc/ansible/hosts/hosts <<EOF
+cat > /etc/ansible/hosts <<EOF
 [k8s_master]
 $(printf "%s\n" "${master_entries[@]}")
 
@@ -235,19 +234,19 @@ k8s_gpu_worker
 EOF
 
 if $ceph_children; then
-cat >> /etc/ansible/hosts/hosts <<EOF
+cat >> /etc/ansible/hosts <<EOF
 [k8s_ceph:children]
 k8s_master
 k8s_worker
 EOF
 else
-cat >> /etc/ansible/hosts/hosts <<EOF
+cat >> /etc/ansible/hosts <<EOF
 [k8s_ceph]
 $(printf "%s\n" "${ceph_entries[@]}")
 EOF
 fi
 
-cat >> /etc/ansible/hosts/hosts <<EOF
+cat >> /etc/ansible/hosts <<EOF
 
 [nfs_server]
 ${master_hns[0]}
@@ -297,7 +296,7 @@ if [ ! -f /root/.ssh/id_rsa ]; then
     ssh-keygen -t rsa -N "" -f /root/.ssh/id_rsa
 fi
 
-ansible all -i /etc/ansible/hosts/hosts -m authorized_key \
+ansible all -i /etc/ansible/hosts -m authorized_key \
   -a "user=root state=present key=\"$(cat /root/.ssh/id_rsa.pub)\"" \
   -e "ansible_python_interpreter=/usr/bin/python3" \
   -e "ansible_ssh_common_args='-o StrictHostKeyChecking=no'"
@@ -307,26 +306,26 @@ ansible all -i /etc/ansible/hosts/hosts -m authorized_key \
 ########################################
 
 for hn in "${master_hns[@]}"; do
-    ansible "$hn" -i /etc/ansible/hosts/hosts -m shell \
+    ansible "$hn" -i /etc/ansible/hosts -m shell \
       -a "hostnamectl set-hostname ${hn}" \
       -e "ansible_python_interpreter=/usr/bin/python3" \
       -e "ansible_ssh_common_args='-o StrictHostKeyChecking=no'"
 done
 for hn in "${cpu_worker_hns[@]}"; do
-    ansible "$hn" -i /etc/ansible/hosts/hosts -m shell \
+    ansible "$hn" -i /etc/ansible/hosts -m shell \
       -a "hostnamectl set-hostname ${hn}" \
       -e "ansible_python_interpreter=/usr/bin/python3" \
       -e "ansible_ssh_common_args='-o StrictHostKeyChecking=no'"
 done
 for hn in "${gpu_worker_hns[@]}"; do
-    ansible "$hn" -i /etc/ansible/hosts/hosts -m shell \
+    ansible "$hn" -i /etc/ansible/hosts -m shell \
       -a "hostnamectl set-hostname ${hn}" \
       -e "ansible_python_interpreter=/usr/bin/python3" \
       -e "ansible_ssh_common_args='-o StrictHostKeyChecking=no'"
 done
 if ! $ceph_children; then
     for hn in "${ceph_hns[@]}"; do
-        ansible "$hn" -i /etc/ansible/hosts/hosts -m shell \
+        ansible "$hn" -i /etc/ansible/hosts -m shell \
           -a "hostnamectl set-hostname ${hn}" \
           -e "ansible_python_interpreter=/usr/bin/python3" \
           -e "ansible_ssh_common_args='-o StrictHostKeyChecking=no'"
