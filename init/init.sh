@@ -75,6 +75,7 @@ generate_entries() {
     hostnames=()
     entries=()
     for i in "${!ips[@]}"; do
+
         local suffix
         suffix=$(printf "%02d" $((i+1)))
         hostnames[i]="${prefix}${suffix}"
