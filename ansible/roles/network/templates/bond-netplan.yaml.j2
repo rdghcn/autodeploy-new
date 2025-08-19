@@ -1,0 +1,30 @@
+network:
+  version: 2
+  ethernets:
+{% for iface in storage_nics %}
+    {{ iface }}:
+      mtu: 9000
+      dhcp4: false
+{% endfor %}
+{% for iface in management_nics %}
+    {{ iface }}:
+      mtu: 9000
+      dhcp4: false
+{% endfor %}
+  bonds:
+    bond_storage:
+      interfaces: {{ storage_nics | to_json }}
+      mtu: 9000
+      parameters:
+        mode: 802.3ad
+        transmit-hash-policy: layer3+4
+      addresses:
+        - {{ storage_ip }}/24
+    bond_mgmt:
+      interfaces: {{ management_nics | to_json }}
+      mtu: 9000
+      parameters:
+        mode: 802.3ad
+        transmit-hash-policy: layer3+4
+      addresses:
+        - {{ hostvars[inventory_hostname]['ansible_host'] }}/24

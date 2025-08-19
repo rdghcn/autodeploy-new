@@ -32,7 +32,11 @@
       - nfs-common
       - nfs-kernel-server
       - containerd
-      - python3-docker  
+      - python3-docker
+      - ipmitool
+      - lldpad
+      - linux-tools-common
+      - linux-tools-5.15.0-88-generic
     state: present
 
 - name: 设置时区
@@ -46,6 +50,74 @@
     owner: root
     group: root
     mode: '0644'
+
+- name: 添加自定义 ulimits (hard)
+  lineinfile:
+    path: /etc/security/limits.conf
+    line: '* hard nofile 65535'
+    state: present
+    backup: yes
+
+- name: 添加自定义 ulimits (soft)
+  lineinfile:
+    path: /etc/security/limits.conf
+    line: '* soft nofile 65535'
+    state: present
+    backup: yes
+
+- name: 升级所有软件包
+  apt:
+    upgrade: dist
+
+- name: 关闭自动更新
+  command: sed -i 's/1/0/g' /etc/apt/apt.conf.d/10periodic
+
+- name: 关闭自动升级
+  command: sed -i 's/1/0/g' /etc/apt/apt.conf.d/20auto-upgrades
+
+- name: 设置 CPU 频率为 performance
+  command: cpupower frequency-set -g performance
+
+- name: 禁用 CPU idle 状态
+  command: cpupower idle-set -D 0
+
+- name: 创建开机自启动脚本
+  copy:
+    dest: /usr/local/bin/startup-commands.sh
+    mode: '0755'
+    content: |
+      #!/bin/bash
+      nvidia-smi -pm 1
+      modprobe nv_peer_mem
+      cpupower frequency-set -g performance
+      cpupower idle-set -D 0
+      lspci -vvv | grep "PCI bridge" | cut -d" " -f 1 | xargs -I{} setpci -s {} ECAP_ACS+06.w=0000
+
+- name: 创建 systemd 服务以运行开机脚本
+  copy:
+    dest: /etc/systemd/system/startup-commands.service
+    mode: '0644'
+    content: |
+      [Unit]
+      Description=Run startup commands
+      After=network.target
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/bin/startup-commands.sh
+      RemainAfterExit=yes
+
+      [Install]
+      WantedBy=multi-user.target
+
+- name: 重新加载 systemd 配置
+  command: systemctl daemon-reload
+
+- name: 启用并启动开机脚本服务
+  systemd:
+    name: startup-commands.service
+    enabled: yes
+    state: started
 
 - name: 检查是否存在 sources.list.bak
   stat:

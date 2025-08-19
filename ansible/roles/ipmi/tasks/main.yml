@@ -1,0 +1,11 @@
+- name: Change IPMI IP address
+  command: ipmitool lan set 1 ipaddr {{ ipmi_ip }}
+  when: ipmi_ip != ""
+
+- name: Change IPMI netmask
+  command: ipmitool lan set 1 netmask {{ ipmi_netmask }}
+  when: ipmi_netmask is defined and ipmi_netmask != ""
+
+- name: Change IPMI gateway
+  command: ipmitool lan set 1 defgw ipaddr {{ ipmi_gateway }}
+  when: ipmi_gateway is defined and ipmi_gateway != ""
