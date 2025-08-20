@@ -36,7 +36,9 @@
       - ipmitool
       - lldpad
       - linux-tools-common
-      - linux-tools-5.15.0-88-generic
+      - linux-tools-5.15.0-119-generic
+      - nvidia-docker2
+      - nvidia-container-runtime
     state: present
 
 - name: 设置时区
@@ -64,10 +66,6 @@
     line: '* soft nofile 65535'
     state: present
     backup: yes
-
-- name: 升级所有软件包
-  apt:
-    upgrade: dist
 
 - name: 关闭自动更新
   command: sed -i 's/1/0/g' /etc/apt/apt.conf.d/10periodic
