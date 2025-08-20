@@ -13,9 +13,12 @@
 
 - name: 使用 template 生成 config.toml
   template:
-    src: config.toml.j2  
+    src: config.toml.j2
     dest: "{{ containerd_config_path }}/config.toml"
     mode: 0644
+
+- name: 配置 NVIDIA Container Toolkit 运行时
+  command: nvidia-ctk runtime configure --runtime=containerd --enable-cdi
 
 - name: 重启 containerd 服务
   systemd:
